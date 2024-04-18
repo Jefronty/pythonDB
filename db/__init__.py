@@ -98,6 +98,7 @@ class DB(object):
 
 	def execute(self, qry, commit=False):
 		"""execute given query, return can vary based on query type"""
+		self.qry = qry
 		if self.__class__.__name__ in ('MySQL', 'MSSQL') and self.type != self.__class__.__name__:
 			self.type = self.__class__.__name__
 		clue = qry.lower()[:6]
@@ -114,13 +115,25 @@ class DB(object):
 			return False
 		return True
 
-	def existing(self, col, table, distinct=False):
-		"""return all existing values of a column in a particular tabl as a liste"""
+	def existing(self, col, table, distinct=False, conditions=None):
+		"""return all existing values of a column in a particular table as a list"""
 		try:
 			qry = "SELECT "
 			if distinct:
 				qry += "DISTINCT "
 			qry += "`%s` FROM `%s`" % (col, table)
+			if conditions != None:
+				if type( conditions ) is str:
+					if type.strip().lower()[:5] == 'where':
+						qry += ' %s' % conditions.strip()
+				elif type( conditions ) is dict:
+					where = []
+					for k in conditions:
+						try:
+							whare.append("`%s`='%s'" % (self.qry_prep(k), self.qry_prep(self.prep_str(conditions[k]))))
+						except:
+							pass
+					qry = ' WHERE %s' % ' AND '.join( where )
 			self.res = self.result(qry)
 			ret = []
 			for row in self.res:
@@ -191,11 +204,13 @@ class DB(object):
 		except:
 			return re.sub(r'\s+', ' ', ''.join( filter(lambda x: x in ascii_chars, raw)) )
 
-	def qry_prep(self, val):
+	def qry_prep(self, val, clean=False):
 		"""add escape characters to string variables to be used in a query"""
 		if not self.type:
 			self.error = "no type"
 			return False
+		if clean:
+			return self.qry_prep(self.prep_str(val))
 		try:
 			if self.type == 'MySQL':
 				return str(val).replace('\\', '\\\\').replace("'", "\\'")
