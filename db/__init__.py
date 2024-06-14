@@ -143,7 +143,7 @@ class DB(object):
 			return False
 
 	def insert(self, qry, commit=False):
-		"""execute an INSERT query are return the row ID if applicable"""
+		"""execute an INSERT query and return the row ID if applicable"""
 		try:
 			self.cursor.execute(qry)
 			if commit and not self._autocommit:
@@ -168,6 +168,7 @@ class DB(object):
 
 	@staticmethod
 	def prep_str(raw):
+		"""replace nonstandard and unicode characters with either standard or HTML encoded alternatives"""
 		if not type(raw) is str:
 			try:
 				raw = str( raw )
