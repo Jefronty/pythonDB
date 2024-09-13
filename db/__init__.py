@@ -13,7 +13,7 @@ class DB(object):
 		self.port = port
 		self._autocommit = autocommit
 
-	def add(self, table, arg):
+	def add(self, table, arg, v=False):
 		"""build and execute INSERT query
 
 		Attempts to insert a record into the named table translating k->v pairs of dictionary to column: value pairs
@@ -22,14 +22,22 @@ class DB(object):
 			table: (string) name of database table
 			args: (dict) keys are used as column names, values are inserted into associate column"""
 		try:
-			qry = "INSERT IGNORE INTO `%s` (`%s`) " % (table, '`, `'.join(arg.keys()))
+			qry = "INSERT IGNORE INTO `%s` (`%%s`) VALUES (%%s)" % table
+			cols = []
 			vals = []
-			for val in arg.values():
-				if type( val ) is str:
-					vals.append("'%s'" % self.qry_prep(self.prep_str( val )))
+			for k in arg:
+				cols.append(k)
+				if arg[k] is None:
+					vals.append('NULL')
+				elif sys.version_info[0] == 2 and isinstance(arg[k], basestring):
+					vals.append("'%s'" % self.qry_prep(arg[k], True))
+				elif sys.version_info[0] == 3 and isinstance(arg[k], str):
+					vals.append("'%s'" % self.qry_prep(arg[k], True))
 				else:
-					vals.append( str(val) )
-			qry += "VALUES (%s)" % ', '.join( vals )
+					 vals.append( str(arg[k]) )
+			qry = qry % ('`, `'.join(cols), ', '.join(vals))
+			if v:
+				print(qry)
 			return self.insert( qry )
 		except:
 			return False
@@ -124,16 +132,17 @@ class DB(object):
 			qry += "`%s` FROM `%s`" % (col, table)
 			if conditions != None:
 				if type( conditions ) is str:
-					if type.strip().lower()[:5] == 'where':
+					if conditions.strip().lower()[:5] == 'where':
 						qry += ' %s' % conditions.strip()
 				elif type( conditions ) is dict:
 					where = []
 					for k in conditions:
 						try:
-							whare.append("`%s`='%s'" % (self.qry_prep(k), self.qry_prep(self.prep_str(conditions[k]))))
+							where.append("`%s`='%s'" % (self.qry_prep(k), self.qry_prep(conditions[k], True)))
 						except:
 							pass
-					qry = ' WHERE %s' % ' AND '.join( where )
+					if len(where) > 0:
+						qry += ' WHERE %s' % ' AND '.join( where )
 			self.res = self.result(qry)
 			ret = []
 			for row in self.res:
@@ -200,8 +209,11 @@ class DB(object):
 			.replace(u'\u271D ', '&#x271D;').replace(u'\u019A', '').replace(u'\uFB01', 'fi').replace(u'\uFB02', 'fl').replace(u'\u2033', '"').replace(u'\u00E4', '&#xe4;')\
 			.replace(u'\u215B', '&frac18;').replace(u'\u00B4', "'").replace(u'\u00B0', '&deg;').replace(u'\u02DA', '&deg;').replace(u'\u2044', '/')
 		try:
-			ret = ret.encode('utf-8')
-			return re.sub(r'\s+', ' ', ''.join( filter(lambda x: x in ascii_chars, ret)) )
+			if sys.version_info[0] == 2:
+				ret = ret.encode('utf-8')
+				return re.sub(r'\s+', ' ', ''.join( filter(lambda x: x in ascii_chars, ret)) )
+			else:
+				return ret
 		except:
 			return re.sub(r'\s+', ' ', ''.join( filter(lambda x: x in ascii_chars, raw)) )
 
