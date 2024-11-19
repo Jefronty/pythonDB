@@ -13,6 +13,10 @@ class DB(object):
 		self.port = port
 		self._autocommit = autocommit
 
+	def __del__(self):
+		"""gracefully close DB connection"""
+		self.disconnect()
+
 	def add(self, table, arg, v=False):
 		"""build and execute INSERT query
 
@@ -40,6 +44,7 @@ class DB(object):
 				print(qry)
 			return self.insert( qry )
 		except:
+			print(qry)
 			return False
 
 	def autocommit(self, val=True):
