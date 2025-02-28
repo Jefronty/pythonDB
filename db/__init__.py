@@ -314,7 +314,7 @@ class MSSQL(DB):
 			super().__init__(host, username, password, database, 'MSSQL', port, autocommit)
 		else:
 			# legacy code for Python2 usage
-			super(MySQL, self).__init__(host=host, username=username, password=password, database=database, port=port, type='MSSQL', autocommit=autocommit)
+			super(MSSQL, self).__init__(host=host, username=username, password=password, database=database, port=port, type='MSSQL', autocommit=autocommit)
 		if port != 1433:
 			_port = str(port).strip()
 			if _port.isdigit():
