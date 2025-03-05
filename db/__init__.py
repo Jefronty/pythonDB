@@ -243,15 +243,17 @@ class DB(object):
 			self.error = 'could not edit %s' % val
 			return False
 
-	def result(self, qry):
+	def result(self, qry, retain=False):
 		"""return tuple of SELECT query results"""
 		try:
 			self.cursor.execute(qry)
 		except:
 			self.error = 'query failed to execute'
 			return False
-		self.res = self.cursor.fetchall()
-		return self.res
+		res = self.cursor.fetchall()
+		if retain:
+			self.res = res
+		return res
 
 	def set_type(self, dbtype):
 		"""set type of database to be used if not using included subclass"""
