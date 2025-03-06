@@ -183,7 +183,7 @@ class DB(object):
 
 	def named_result(self, qry, retain=False):
 		"""return result output rows as named tuples"""
-		return self.result(qry, True, retain)
+		return DB.result(self, qry, True, retain)
 
 	@staticmethod
 	def prep_str(raw):
