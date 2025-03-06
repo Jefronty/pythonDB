@@ -1,4 +1,5 @@
 import sys, MySQLdb, pymssql, string, re
+from collections import namedtuple
 
 class DB(object):
 	"""Class for connecting and interacting with databases (MySQL, MariaDB, MSSQL)"""
@@ -180,6 +181,10 @@ class DB(object):
 			return False
 		return affected
 
+	def named_result(self, qry, retain=False):
+		"""return result output rows as named tuples"""
+		return self.result(qry, True, retain)
+
 	@staticmethod
 	def prep_str(raw):
 		"""replace nonstandard and unicode characters with either standard or HTML encoded alternatives"""
@@ -243,7 +248,7 @@ class DB(object):
 			self.error = 'could not edit %s' % val
 			return False
 
-	def result(self, qry, retain=False):
+	def result(self, qry, named=False, retain=False):
 		"""return tuple of SELECT query results"""
 		try:
 			self.cursor.execute(qry)
@@ -253,6 +258,18 @@ class DB(object):
 		res = self.cursor.fetchall()
 		if retain:
 			self.res = res
+		if named:
+			try:
+				if not res:
+					return res
+				Row = namedtuple('Row', list((x[0] for x in self.cursor.description)))
+				ret = []
+				for row in res:
+					_row = Row(*row)
+					ret.append(_row)
+				return tuple(ret)
+			except:
+				return res
 		return res
 
 	def set_type(self, dbtype):
@@ -278,15 +295,17 @@ class DB(object):
 			return False
 		return True
 
-	def single(self, qry):
+	def single(self, qry, retain=False):
 		"""return single scalar result from SELECT or similar query"""
 		try:
 			self.cursor.execute(qry)
 		except:
 			return False
-		self.res = self.cursor.fetchall()
-		if len( self.res ) > 0:
-			return self.res[0][0]
+		res = self.cursor.fetchall()
+		if retain:
+			self.res = res
+		if len( res ) > 0:
+			return res[0][0]
 		return None
 
 
