@@ -60,6 +60,14 @@ class DB(object):
 			return False
 		return True
 
+	def columns(self, table):
+		if self.result("SELECT * FROM `%s` WHERE 0=1" % table) is False:
+			return False
+		try:
+			return tuple((x[0] for x in self.cursor.description))
+		except:
+			return False
+
 	def connect(self, host=None, username=None, password=None, database=None, port=None, autocommit=None):
 		"""establish connection and cursor, return boolean of success"""
 		if self.__class__.__name__ in ('MySQL', 'MSSQL') and self.type != self.__class__.__name__:
