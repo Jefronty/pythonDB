@@ -3,6 +3,9 @@ from collections import namedtuple
 
 class DB(object):
 	"""Class for connecting and interacting with databases (MySQL, MariaDB, MSSQL)"""
+
+	_error = ''
+
 	def __init__(self, host=None, username=None, password=None, database=None, type=None, port=None, autocommit=False):
 		self.host = host
 		self.user = username
@@ -10,7 +13,7 @@ class DB(object):
 		self.dbase = database
 		self.connection = None
 		self.cursor = None
-		self.type = type
+		self.__type = type
 		self.port = port
 		self._autocommit = autocommit
 
@@ -45,6 +48,7 @@ class DB(object):
 				print(qry)
 			return self.insert( qry )
 		except:
+			self._error = 'insert failed'
 			print(qry)
 			return False
 
@@ -57,21 +61,24 @@ class DB(object):
 				self.connection.autocommit(self._autocommit)
 				self.cursor = self.connection.cursor()
 		except:
+			self._error = 'failed to set cursor to autocommit'
 			return False
 		return True
 
 	def columns(self, table):
 		if self.result("SELECT * FROM `%s` WHERE 0=1" % table) is False:
+			self._error = 'failed to query `%s`' % table
 			return False
 		try:
 			return tuple((x[0] for x in self.cursor.description))
 		except:
+			self._error = 'failed to get columns from `%s`' % table
 			return False
 
 	def connect(self, host=None, username=None, password=None, database=None, port=None, autocommit=None):
 		"""establish connection and cursor, return boolean of success"""
-		if self.__class__.__name__ in ('MySQL', 'MSSQL') and self.type != self.__class__.__name__:
-			self.type = self.__class__.__name__
+		if self.__class__.__name__ in ('MySQL', 'MSSQL') and self.__type != self.__class__.__name__:
+			self.__type = self.__class__.__name__
 		if host != None:
 			self.host = host
 		if username != None:
@@ -86,16 +93,19 @@ class DB(object):
 				self.port = int(_port)
 		# set to boolean
 		self._autocommit = not not autocommit
-		if not self.type:
-			return False
-		if self.type == 'MySQL':
+		if not self.__type or self.__type not in ('MySQL', 'MSSQL'):
+			self.__type = self.descendant_of(('MySQL', 'MSSQL'))
+			if not self.__type:
+				self._error = 'invalid type, must be MySQL or MSSQL'
+				return False
+		if self.__type == 'MySQL':
 			try:
 				self.connection = MySQLdb.connect(host=self.host, user=self.user, passwd=self.pword, port=self.port, db=self.dbase, charset='utf8')
 				if self._autocommit:
 					self.connection.autocommit(True)
 			except:
 				return False
-		elif self.type == 'MSSQL':
+		elif self.__type == 'MSSQL':
 			try:
 				self.connection = pymssql.connect(server=self.host, user=self.user, password=self.pword, database=self.dbase, port=self.port)
 				if self._autocommit:
@@ -104,6 +114,26 @@ class DB(object):
 				return False
 		self.cursor = self.connection.cursor()
 		return True
+
+	def descendant_of(self, _type):
+		"""determine if instance is a descendant of MySQL or MSSQL
+		if both are passed in a list or tuple the name of the one
+		in the parentage is returned"""
+		try:
+			# specific instance for python2 usage allowing for any string type
+			if isinstance(_type, basestring):
+				return any(cls.__name__ == _type for cls in self.__class__.__mro__)
+		except:
+			pass
+		if isinstance(_type, str):
+			return any(cls.__name__ == _type for cls in self.__class__.__mro__)
+		elif isinstance(_type, (list, tuple)):
+			for type_name in _type:
+				if any(cls.__name__ == type_name for cls in self.__class__.__mro__):
+					return type_name
+			else:
+				return False
+		return False
 
 	def disconnect(self):
 		"""break existing connection from database"""
@@ -118,16 +148,20 @@ class DB(object):
 	close = disconnect
 	stop = disconnect
 
+	@property
+	def error(self):
+		return self._error
+
 	def execute(self, qry, commit=False):
 		"""execute given query, return can vary based on query type"""
 		self.qry = qry
-		if self.__class__.__name__ in ('MySQL', 'MSSQL') and self.type != self.__class__.__name__:
-			self.type = self.__class__.__name__
+		if self.__class__.__name__ in ('MySQL', 'MSSQL') and self.__type != self.__class__.__name__:
+			self.__type = self.__class__.__name__
 		clue = qry.lower()[:6]
 		if clue == 'insert':
 			return self.insert(qry, commit)
 		elif clue == 'select' or clue[:4] == 'show':
-			return self.result(qry)
+			return DB.result(self, qry)
 		elif clue in ('update', 'delete'):
 			return self.modify(qry, commit)
 		try:
@@ -178,7 +212,7 @@ class DB(object):
 	def modify(self, qry, commit=False):
 		"""execute an UPDATE, MODIFY, or DELETE query and return affected row count"""
 		try:
-			if self.type == 'MySQL':
+			if self.__type == 'MySQL':
 				affected = self.cursor.execute(qry)
 			else:
 				self.cursor.execute(qry)
@@ -237,15 +271,15 @@ class DB(object):
 
 	def qry_prep(self, val, clean=False):
 		"""add escape characters to string variables to be used in a query"""
-		if not self.type:
+		if not self.__type:
 			self.error = "no type"
 			return False
 		if clean:
 			return self.qry_prep(self.prep_str(val))
 		try:
-			if self.type == 'MySQL':
+			if self.__type == 'MySQL':
 				return str(val).replace('\\', '\\\\').replace("'", "\\'")
-			elif self.type == 'MSSQL':
+			elif self.__type == 'MSSQL':
 				return str(val).replace("'", "''")
 			else:
 				# unknown condition
@@ -286,17 +320,17 @@ class DB(object):
 		if prepped in ('mysql', 'mariadb'):
 			if self.__class__.__name__ == 'MySQL':
 				return True
-			elif self.__class__.__name__ == 'MSSQL':
+			elif self.__class__.__name__ == 'MSSQL' or self.descendant_of('MSSQL'):
 				return False
-			self.type = 'MySQL'
+			self.__type = 'MySQL'
 			if type( self.port ) is not int:
 				self.port = 3306
 		elif prepped in ('ms', 'mssql', 'sql', 'sql server'):
 			if self.__class__.__name__ == 'MSSQL':
 				return True
-			elif self.__class__.__name__ == 'MySQL':
+			elif self.__class__.__name__ == 'MySQL' or self.descendant_of('MySQL'):
 				return False
-			self.type = 'MSSQL'
+			self.__type = 'MSSQL'
 			if type( self.port ) is not int:
 				self.port = 1433
 		else:
@@ -316,6 +350,13 @@ class DB(object):
 			return res[0][0]
 		return None
 
+	@property
+	def type(self):
+		return self.__type
+
+	@type.setter
+	def type(self, dbtype):
+		return self.set_type(dbtype)
 
 class MySQL(DB):
 	"""subclass of DB to interact with MySQL"""
