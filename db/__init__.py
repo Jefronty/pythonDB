@@ -5,6 +5,7 @@ class DB(object):
 	"""Class for connecting and interacting with databases (MySQL, MariaDB, MSSQL)"""
 
 	_error = ''
+	__type = None
 
 	def __init__(self, host=None, username=None, password=None, database=None, type=None, port=None, autocommit=False):
 		self.host = host
@@ -93,11 +94,16 @@ class DB(object):
 				self.port = int(_port)
 		# set to boolean
 		self._autocommit = not not autocommit
-		if not self.__type or self.__type not in ('MySQL', 'MSSQL'):
+		try:
+			if not self.__type or self.__type not in ('MySQL', 'MSSQL'):
+				self.__type = self.descendant_of(('MySQL', 'MSSQL'))
+				if not self.__type:
+					self._error = 'invalid type, must be MySQL or MSSQL'
+					return False
+		except:
 			self.__type = self.descendant_of(('MySQL', 'MSSQL'))
-			if not self.__type:
-				self._error = 'invalid type, must be MySQL or MSSQL'
-				return False
+		if not self.__type or self.__type not in ('MySQL', 'MSSQL'):
+			return False
 		if self.__type == 'MySQL':
 			try:
 				self.connection = MySQLdb.connect(host=self.host, user=self.user, passwd=self.pword, port=self.port, db=self.dbase, charset='utf8')
