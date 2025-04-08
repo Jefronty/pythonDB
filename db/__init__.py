@@ -96,10 +96,11 @@ class DB(object):
 		self._autocommit = not not autocommit
 		try:
 			if not self.__type or self.__type not in ('MySQL', 'MSSQL'):
-				self.__type = self.descendant_of(('MySQL', 'MSSQL'))
-				if not self.__type:
+				_type = self.descendant_of(('MySQL', 'MSSQL'))
+				if not _type:
 					self._error = 'invalid type, must be MySQL or MSSQL'
 					return False
+				self.set_type(_type)
 		except:
 			self.__type = self.descendant_of(('MySQL', 'MSSQL'))
 		if not self.__type or self.__type not in ('MySQL', 'MSSQL'):
@@ -278,7 +279,7 @@ class DB(object):
 	def qry_prep(self, val, clean=False):
 		"""add escape characters to string variables to be used in a query"""
 		if not self.__type:
-			self.error = "no type"
+			self._error = "no type"
 			return False
 		if clean:
 			return self.qry_prep(self.prep_str(val))
@@ -289,11 +290,11 @@ class DB(object):
 				return str(val).replace("'", "''")
 			else:
 				# unknown condition
-				self.error = 'invalid type'
+				self._error = 'invalid type'
 				return False
 		except:
 			# error occured
-			self.error = 'could not edit %s' % val
+			self._error = 'could not edit %s' % val
 			return False
 
 	def result(self, qry, named=False, retain=False):
@@ -301,7 +302,7 @@ class DB(object):
 		try:
 			self.cursor.execute(qry)
 		except:
-			self.error = 'query failed to execute'
+			self._error = 'query failed to execute'
 			return False
 		res = self.cursor.fetchall()
 		if retain:
@@ -329,7 +330,7 @@ class DB(object):
 			elif self.__class__.__name__ == 'MSSQL' or self.descendant_of('MSSQL'):
 				return False
 			self.__type = 'MySQL'
-			if type( self.port ) is not int:
+			if not hasattr(self, 'port') or type( self.port ) is not int:
 				self.port = 3306
 		elif prepped in ('ms', 'mssql', 'sql', 'sql server'):
 			if self.__class__.__name__ == 'MSSQL':
@@ -337,7 +338,7 @@ class DB(object):
 			elif self.__class__.__name__ == 'MySQL' or self.descendant_of('MySQL'):
 				return False
 			self.__type = 'MSSQL'
-			if type( self.port ) is not int:
+			if not hasattr(self, 'port') or type( self.port ) is not int:
 				self.port = 1433
 		else:
 			return False
