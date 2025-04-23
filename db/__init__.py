@@ -31,7 +31,7 @@ class DB(object):
 			table: (string) name of database table
 			args: (dict) keys are used as column names, values are inserted into associate column"""
 		try:
-			qry = "INSERT IGNORE INTO `%s` (`%%s`) VALUES (%%s)" % table
+			qry = "INSERT IGNORE INTO %s (%%s) VALUES (%%s)" % self.prep_table_name(table)
 			cols = []
 			vals = []
 			for k in arg:
@@ -44,7 +44,7 @@ class DB(object):
 					vals.append("'%s'" % self.qry_prep(arg[k], True))
 				else:
 					 vals.append( str(arg[k]) )
-			qry = qry % ('`, `'.join(cols), ', '.join(vals))
+			qry = qry % (self.prep_col_names(cols), ', '.join(vals))
 			if v:
 				print(qry)
 			return self.insert( qry )
@@ -67,13 +67,13 @@ class DB(object):
 		return True
 
 	def columns(self, table):
-		if self.result("SELECT * FROM `%s` WHERE 0=1" % table) is False:
+		if self.result("SELECT * FROM %s WHERE 0=1" % self.prep_table_name(table)) is False:
 			self._error = 'failed to query `%s`' % table
 			return False
 		try:
 			return tuple((x[0] for x in self.cursor.description))
 		except:
-			self._error = 'failed to get columns from `%s`' % table
+			self._error = 'failed to get columns from %s' % self.prep_table_name(table)
 			return False
 
 	def connect(self, host=None, username=None, password=None, database=None, port=None, autocommit=None):
@@ -178,13 +178,13 @@ class DB(object):
 			return False
 		return True
 
-	def existing(self, col, table, distinct=False, conditions=None):
+	def existing(self, col, table, distinct=False, conditions=None, v=False):
 		"""return all existing values of a column in a particular table as a list"""
 		try:
 			qry = "SELECT "
 			if distinct:
 				qry += "DISTINCT "
-			qry += "`%s` FROM `%s`" % (col, table)
+			qry += "%s FROM %s" % (self.prep_col_names(col), self.prep_table_name(table))
 			if conditions != None:
 				if type( conditions ) is str:
 					if conditions.strip().lower()[:5] == 'where':
@@ -198,6 +198,8 @@ class DB(object):
 							pass
 					if len(where) > 0:
 						qry += ' WHERE %s' % ' AND '.join( where )
+			if v:
+				print(qry)
 			self.res = self.result(qry)
 			ret = []
 			for row in self.res:
@@ -234,6 +236,26 @@ class DB(object):
 		"""return result output rows as named tuples"""
 		return DB.result(self, qry, True, retain)
 
+	def prep_col_names(self, columns, bookended=False):
+		"""wrap column name(s) in appropriate characters"""
+		if self.__type == 'MySQL':
+			_wrap = ('`','`')
+		else:
+			_wrap = ('[',']')
+		glue = '%s,%s' % (_wrap[1], _wrap[0])
+		cols = []
+		if isinstance(columns, (list, tuple, dict)):
+			for col in columns:
+				cols.append(self.prep_col_names(col, True))
+		else:
+			if bookended:
+				return columns
+			else:
+				return '%s%s%s' % (_wrap[0], columns.strip(' []`'), _wrap[1])
+		if bookended:
+			return glue.join(cols)
+		return '%s%s%s' % (_wrap[0], glue.join(cols), _wrap[1])
+
 	@staticmethod
 	def prep_str(raw):
 		"""replace nonstandard and unicode characters with either standard or HTML encoded alternatives"""
@@ -244,7 +266,7 @@ class DB(object):
 				pass
 		ascii_chars = set(string.printable)
 		try:
-			ret = raw.decode('utf-8').replace(u'\xba', '&#186;').replace(u'\xb0', '&#176;').replace(u'\xfc', '&#252;').replace(u'\xb2', '&#178;').replace(u'\xa0', u' ')\
+			ret = raw.decode('utf-8', errors='xmlcharrefreplace').replace(u'\xba', '&#186;').replace(u'\xb0', '&#176;').replace(u'\xfc', '&#252;').replace(u'\xb2', '&#178;').replace(u'\xa0', u' ')\
 			.replace(u'\xc9', '&#201;').replace(u'\xe9', '&#233;').replace(u'\xe5', '&#229;').replace(u'\xe2', '&#226;').replace(u'\xae', '&#174;').replace(u'\xe2\x80\x9d', '"')\
 			.replace(u'\x99', '&#153;').replace(u'\u2122', '&#153;').replace(u'\u201c', '"').replace(u'\u201d', '"').replace(u'\u2018', "'").replace(u'\u2019', "'")\
 			.replace(u'\u2020', '&#134;').replace(u'\u02dd','"').replace(u'\ufffd', '-').replace(u'\u00d7', '&#215;').replace(u'\u00d8', '&#216;').replace(u'\u044c', '&#216;')\
@@ -254,7 +276,7 @@ class DB(object):
 			.replace(u'\u00BD', '&#189;').replace(u'\u00BE', '&#190;').replace(u'\u00A9', '&copy;').replace(u'\u00AD', '-').replace(u'\u2026', '&mldr;').replace(u'\u00B1', '&#177;')\
 			.replace(u'\u201A', '&sbquo;').replace(u'\u00C2', '&#194;').replace(u'\u00C3', '&#195;').replace(u'\u00E2', '&#226;').replace(u'\u20AC', '&euro;').replace(u'\u026C', '')\
 			.replace(u'\u271D ', '&#x271D;').replace(u'\u019A', '').replace(u'\uFB01', 'fi').replace(u'\uFB02', 'fl').replace(u'\u2033', '"').replace(u'\u00E4', '&#xe4;')\
-			.replace(u'\u215B', '&frac18;').replace(u'\u00B4', "'").replace(u'\u00B0', '&deg;').replace(u'\u02DA', '&deg;').replace(u'\u2044', '/')
+			.replace(u'\u215B', '&frac18;').replace(u'\u00B4', "'").replace(u'\u00B0', '&deg;').replace(u'\u02DA', '&deg;').replace(u'\u2044', '/').replace(u'\x91', "'")
 		except:
 			ret = raw.replace(u'\xba', '&#186;').replace(u'\xb0', '&#176;').replace(u'\xfc', '&#252;').replace(u'\xb2', '&#178;').replace(u'\xa0', u' ')\
 			.replace(u'\xc9', '&#201;').replace(u'\xe9', '&#233;').replace(u'\xe5', '&#229;').replace(u'\xe2', '&#226;').replace(u'\xae', '&#174;').replace(u'\xe2\x80\x9d', '"')\
@@ -266,7 +288,7 @@ class DB(object):
 			.replace(u'\u00BD', '&#189;').replace(u'\u00BE', '&#190;').replace(u'\u00A9', '&copy;').replace(u'\u00AD', '-').replace(u'\u2026', '&mldr;').replace(u'\u00B1', '&#177;')\
 			.replace(u'\u201A', '&sbquo;').replace(u'\u00C2', '&#194;').replace(u'\u00C3', '&#195;').replace(u'\u00E2', '&#226;').replace(u'\u20AC', '&euro;').replace(u'\u026C', '')\
 			.replace(u'\u271D ', '&#x271D;').replace(u'\u019A', '').replace(u'\uFB01', 'fi').replace(u'\uFB02', 'fl').replace(u'\u2033', '"').replace(u'\u00E4', '&#xe4;')\
-			.replace(u'\u215B', '&frac18;').replace(u'\u00B4', "'").replace(u'\u00B0', '&deg;').replace(u'\u02DA', '&deg;').replace(u'\u2044', '/')
+			.replace(u'\u215B', '&frac18;').replace(u'\u00B4', "'").replace(u'\u00B0', '&deg;').replace(u'\u02DA', '&deg;').replace(u'\u2044', '/').replace(u'\x91', "'")
 		try:
 			if sys.version_info[0] == 2:
 				ret = ret.encode('utf-8')
@@ -275,6 +297,21 @@ class DB(object):
 				return ret
 		except:
 			return re.sub(r'\s+', ' ', ''.join( filter(lambda x: x in ascii_chars, raw)) )
+
+	def prep_table_name(self, table):
+		if self.__type == 'MySQL':
+			_wrap = ('`','`')
+		else:
+			_wrap = ('[',']')
+		br = table.split('.')
+		prepped = []
+		ret = ''
+		try:
+			for piece in br:
+				prepped.append('%s%s%s' % (_wrap[0], piece.strip(' []`'), _wrap[1]))
+			return '.'.join(prepped)
+		except:
+			return table
 
 	def qry_prep(self, val, clean=False):
 		"""add escape characters to string variables to be used in a query"""
