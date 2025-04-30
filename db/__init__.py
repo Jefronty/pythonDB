@@ -237,7 +237,7 @@ class DB(object):
 		return DB.result(self, qry, True, retain)
 
 	def prep_col_names(self, columns, bookended=False):
-		"""wrap column name(s) in appropriate characters"""
+		"""wrap column name(s) in type dependent characters for building queries"""
 		if self.__type == 'MySQL':
 			_wrap = ('`','`')
 		else:
@@ -299,6 +299,7 @@ class DB(object):
 			return re.sub(r'\s+', ' ', ''.join( filter(lambda x: x in ascii_chars, raw)) )
 
 	def prep_table_name(self, table):
+		"""add type dependent wrap characters to database and table names for a query"""
 		if self.__type == 'MySQL':
 			_wrap = ('`','`')
 		else:
