@@ -1,4 +1,10 @@
-import sys, MySQLdb, pymssql, string, re
+import sys, MySQLdb, pymssql
+import json, re, string
+try:
+	# only required for save_result method when saving output as XLSX file
+	import xlsxwriter
+except:
+	pass
 from collections import namedtuple
 
 class DB(object):
@@ -257,6 +263,18 @@ class DB(object):
 		return '%s%s%s' % (_wrap[0], glue.join(cols), _wrap[1])
 
 	@staticmethod
+	def prep_for_csv(raw):
+		if raw is None:
+			return ''
+		if isinstance(raw, (dict, list, tuple)):
+			alt = json.dumps(raw)
+		else:
+			alt = str(raw)
+		if ',' in alt or '"' in alt:
+			return '"%s"' % alt.replace('"', '""')
+		return alt
+
+	@staticmethod
 	def prep_str(raw):
 		"""replace nonstandard and unicode characters with either standard or HTML encoded alternatives"""
 		if not type(raw) is str:
@@ -359,8 +377,90 @@ class DB(object):
 				return res
 		return res
 
+	def save_result(self, res, dest, columns=None):
+		"""write result object to a CSV or XLSX file"""
+		try:
+			if re.search(r'.+\.csv$', dest, re.IGNORECASE):
+				# write to csv
+				f = open(dest, 'w')
+				for i, row in enumerate(res):
+					if not i:
+						# first row, add labels
+						if isinstance(columns, (tuple, list)):
+							if len(columns) != len(row):
+								print('Column count mismatch')
+								return False
+							try:
+								f.write('%s\n' % ','.join(list(map(self.prep_for_csv, columns))))
+							except:
+								print('Failed to write custom column names')
+								return False
+						else:
+							try:
+								# use labels from namedtuple as header
+								f.write('%s\n' % '","'.join(list(map(self.prep_for_csv, row._fields))))
+							except:
+								print('Failed to read column names, provide columns value or use namedtuple for rows')
+								return False
+					try:
+						# attempt to write row to file
+						# even with namedtuple row.__getnewargs__() is not required
+						f.write('%s\n' % ','.join(list(map(self.prep_for_csv, row))))
+					except:
+						# failed to write row
+						print('failed to write row #%d' % i)
+						print(row)
+						break
+				f.close()
+			elif re.search(r'.+\.xlsx$', dest, re.IGNORECASE):
+				# write to Excel file
+				workbook = xlsxwriter.Workbook(dest)
+				worksheet = workbook.add_worksheet('Sheet1')
+				for i, row in enumerate(res):
+					if not i:
+						# first row, add labels
+						if isinstance(columns, (tuple, list)):
+							if len(columns) != len(row):
+								print('Column count mismatch')
+								return False
+							try:
+								for j, col in enumerate(columns):
+									worksheet.write(i, j, col)
+							except:
+								print('Failed to write custom column names')
+								return False
+						else:
+							#
+							try:
+								for j, col in enumerate(row._fields):
+									worksheet.write(i, j, col)
+							except:
+								print('Failed to read column names')
+								return False
+					try:
+						# attempt to write row to file
+						# even with namedtuple row.__getnewargs__() is not required
+						for j, val in enumerate(row):
+							worksheet.write(i+1, j, val)
+					except:
+						# failed to write row
+						print('failed to write row #%d' % i)
+						print(row)
+						break
+				# freeze top row and add columnal filters
+				worksheet.freeze_panes(1,0)
+				worksheet.autofilter(0, 0, len(res), len(row)-1)
+				workbook.close()
+			else:
+				print('invalid file type')
+				return False
+			return True
+		except:
+			print('Failed to save result to file')
+			return False
+
 	def set_type(self, dbtype):
-		"""set type of database to be used if not using included subclass"""
+		"""set type of database to be used, check if compatible subclass is being used"""
 		prepped = dbtype.lower().strip()
 		if prepped in ('mysql', 'mariadb'):
 			if self.__class__.__name__ == 'MySQL':
