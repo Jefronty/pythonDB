@@ -414,7 +414,7 @@ class DB(object):
 				f.close()
 			elif re.search(r'.+\.xlsx$', dest, re.IGNORECASE):
 				# write to Excel file
-				workbook = xlsxwriter.Workbook(dest)
+				workbook = xlsxwriter.Workbook(dest, {'strings_to_urls': False})
 				worksheet = workbook.add_worksheet('Sheet1')
 				for i, row in enumerate(res):
 					if not i:
