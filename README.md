@@ -2,6 +2,7 @@
 prerequisites:
 - MySQL: MySQLdb module for MySQL or MariaDB database
 - MSSQL: pymssql module for MS SQL Server database
+
 optional:
 - xlsxwriter: used in save_result method if you choose to output to XLSX file
 
