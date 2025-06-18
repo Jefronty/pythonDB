@@ -1,4 +1,6 @@
 # pythonDB
+package to connect and interact with MS SQL Server and MySQL/MariaDB databases
+
 prerequisites:
 - MySQL: MySQLdb module for MySQL or MariaDB database
 - MSSQL: pymssql module for MS SQL Server database
