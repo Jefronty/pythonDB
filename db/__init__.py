@@ -13,7 +13,7 @@ class DB(object):
 	_error = ''
 	__type = None
 
-	def __init__(self, host=None, username=None, password=None, database=None, type=None, port=None, autocommit=False):
+	def __init__(self, host=None, username=None, password=None, database=None, type=None, port=None, autocommit=False, conn_timeout=None, qry_timeout=None):
 		self.host = host
 		self.user = username
 		self.pword = password
@@ -23,12 +23,14 @@ class DB(object):
 		self.__type = type
 		self.port = port
 		self._autocommit = autocommit
+		self.conn_timeout = conn_timeout or 30 # default for MySQL=10, MSSQL=60
+		self.qry_timeout = qry_timeout or 0
 
 	def __del__(self):
 		"""gracefully close DB connection"""
 		self.disconnect()
 
-	def add(self, table, arg, v=False):
+	def add(self, table, arg, commit=False, v=False):
 		"""build and execute INSERT query
 
 		Attempts to insert a record into the named table translating k->v pairs of dictionary to column: value pairs
@@ -38,6 +40,8 @@ class DB(object):
 			args: (dict) keys are used as column names, values are inserted into associate column"""
 		try:
 			qry = "INSERT IGNORE INTO %s (%%s) VALUES (%%s)" % self.prep_table_name(table)
+			if self.__type == 'MSSQL':
+				qry = qry.replace('IGNORE ', '')
 			cols = []
 			vals = []
 			for k in arg:
@@ -82,7 +86,7 @@ class DB(object):
 			self._error = 'failed to get columns from %s' % self.prep_table_name(table)
 			return False
 
-	def connect(self, host=None, username=None, password=None, database=None, port=None, autocommit=None):
+	def connect(self, host=None, username=None, password=None, database=None, port=None, autocommit=None, conn_timeout=None, qry_timeout=None):
 		"""establish connection and cursor, return boolean of success"""
 		if self.__class__.__name__ in ('MySQL', 'MSSQL') and self.__type != self.__class__.__name__:
 			self.__type = self.__class__.__name__
@@ -94,6 +98,10 @@ class DB(object):
 			self.pword = password
 		if database != None:
 			self.dbase = database
+		if conn_timeout != None:
+			self.conn_timeout = int(conn_timeout)
+		if qry_timeout != None:
+			self.qry_timeout = int(qry_timeout)
 		if port != None:
 			_port = str(port).strip()
 			if _port.isdigit():
@@ -113,19 +121,20 @@ class DB(object):
 			return False
 		if self.__type == 'MySQL':
 			try:
-				self.connection = MySQLdb.connect(host=self.host, user=self.user, passwd=self.pword, port=self.port, db=self.dbase, charset='utf8')
-				if self._autocommit:
-					self.connection.autocommit(True)
+				self.connection = MySQLdb.connect(host=self.host, user=self.user, passwd=self.pword, port=self.port, db=self.dbase, charset='utf8', connect_timeout=self.conn_timeout)
 			except:
 				return False
 		elif self.__type == 'MSSQL':
 			try:
-				self.connection = pymssql.connect(server=self.host, user=self.user, password=self.pword, database=self.dbase, port=self.port)
-				if self._autocommit:
-					self.connection.autocommit(True)
+				self.connection = pymssql.connect(server=self.host, user=self.user, password=self.pword, database=self.dbase, port=self.port, login_timeout=self.conn_timeout, timeout=self.qry_timeout)
 			except:
 				return False
+		if self._autocommit:
+			self.connection.autocommit(True)
 		self.cursor = self.connection.cursor()
+		if self.qry_timeout and self.__type == 'MySQL':
+			self.execute("SET SESSION interactive_timeout=%d" % self.qry_timeout)
+			self.execute("SET SESSION wait_timeout=%d" % self.qry_timeout)
 		return True
 
 	def descendant_of(self, _type):
@@ -511,7 +520,7 @@ class DB(object):
 
 class MySQL(DB):
 	"""subclass of DB to interact with MySQL"""
-	def __init__(self, host=None, username=None, password=None, database=None, port=3306, autocommit=False, autoconnect=True):
+	def __init__(self, host=None, username=None, password=None, database=None, port=3306, autocommit=False, autoconnect=True, conn_timeout=0, qry_timeout=0):
 		if sys.version_info[0] > 2:
 			super().__init__(host, username, password, database, 'MySQL', port, autocommit)
 		else:
@@ -530,7 +539,7 @@ class MySQL(DB):
 
 class MSSQL(DB):
 	"""subclass of DB to interact with MS SQL SERVER"""
-	def __init__(self, host=None, username=None, password=None, database=None, port=1433, autocommit=False, autoconnect=True):
+	def __init__(self, host=None, username=None, password=None, database=None, port=1433, autocommit=False, autoconnect=True, conn_timeout=0, qry_timeout=0):
 		if sys.version_info[0] > 2:
 			super().__init__(host, username, password, database, 'MSSQL', port, autocommit)
 		else:
