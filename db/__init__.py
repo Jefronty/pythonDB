@@ -25,6 +25,7 @@ class DB(object):
 		self._autocommit = autocommit
 		self.conn_timeout = conn_timeout or 30 # default for MySQL=10, MSSQL=60
 		self.qry_timeout = qry_timeout or 0
+		self._qry = None
 
 	def __del__(self):
 		"""gracefully close DB connection"""
@@ -176,7 +177,7 @@ class DB(object):
 
 	def execute(self, qry, commit=False):
 		"""execute given query, return can vary based on query type"""
-		self.qry = qry
+		self._qry = qry
 		if self.__class__.__name__ in ('MySQL', 'MSSQL') and self.__type != self.__class__.__name__:
 			self.__type = self.__class__.__name__
 		clue = qry.lower()[:6]
@@ -251,6 +252,23 @@ class DB(object):
 		"""return result output rows as named tuples"""
 		return DB.result(self, qry, True, retain)
 
+	def paged_result(self, pg_num, qty_per_page, qry, named=False, retain=False):
+		"""return pagenated results"""
+		offset = int(qty_per_page)*(int(pg_num)-1)
+		if self.__type == 'MySQL':
+			if re.search(r'\s+LIMIT\s+\d.*$', qry, re.IGNORECASE):
+				self._qry = re.sub(r'\s+LIMIT\s.+$', ' LIMIT %s, %s' % (offset, qty_per_page), qry)
+			else:
+				self._qry = '%s LIMIT %s, %s' % (qry.strip(' ;'), offset, qty_per_page)
+		elif self.__type == 'MSSQL':
+			if re.search(r'\s+OFFSET\s+\d.+$', qry, re.IGNORECASE):
+				self._qry = re.sub(r'\s+OFFSET\s.+$', ' OFFSET %s ROWS FETCH NEXT %s ROWS ONLY' % (offset, qty_per_page), qry)
+			else:
+				self._qry = '%s OFFSET %s ROWS FETCH NEXT %s ROWS ONLY' % (qry.strip(' ;'), offset, qty_per_page)
+		else:
+			return None
+		return DB.result(self, self._qry, named, retain)
+
 	def prep_col_names(self, columns, bookended=False):
 		"""wrap column name(s) in type dependent characters for building queries"""
 		if self.__type == 'MySQL':
@@ -276,10 +294,11 @@ class DB(object):
 			return ''
 		if isinstance(raw, (dict, list, tuple)):
 			alt = json.dumps(raw)
-		elif clean:
-			alt = self.prep_str(raw)
 		else:
-			alt = str(raw)
+			try:
+				alt = self.prep_str(raw)
+			except:
+				alt = str(raw)
 		if ',' in alt or '"' in alt:
 			return '"%s"' % alt.replace('"', '""')
 		return alt
@@ -378,16 +397,27 @@ class DB(object):
 		res = self.cursor.fetchall()
 		if retain:
 			self.res = res
-		if named:
+		if res and named:
 			try:
-				if not res:
-					return res
 				Row = namedtuple('Row', list((x[0] for x in self.cursor.description)))
 				ret = []
 				for row in res:
 					_row = Row(*row)
 					ret.append(_row)
 				return tuple(ret)
+			except:
+				return res
+		return res
+
+	def row(self, qry, named=False, retain=False):
+		if self._qry != qry:
+			self._qry = qry
+			self.cursor.execute(qry)
+		res = self.cursor.fetchone()
+		if res and named:
+			try:
+				Row = namedtuple('Row', list((x[0] for x in self.cursor.description)))
+				return Row(*res)
 			except:
 				return res
 		return res
@@ -445,7 +475,7 @@ class DB(object):
 								print('Failed to write custom column names')
 								return False
 						else:
-							#
+							# get column names from namedtuple labels
 							try:
 								for j, col in enumerate(row._fields):
 									worksheet.write(i, j, col)
@@ -456,7 +486,10 @@ class DB(object):
 						# attempt to write row to file
 						# even with namedtuple row.__getnewargs__() is not required
 						for j, val in enumerate(row):
-							worksheet.write(i+1, j, val)
+							try:
+								worksheet.write(i+1, j, val)
+							except:
+								worksheet.write(i+1, j, str(val))
 					except:
 						# failed to write row
 						print('failed to write row #%d' % i)
