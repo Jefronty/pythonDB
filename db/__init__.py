@@ -108,7 +108,8 @@ class DB(object):
 			if _port.isdigit():
 				self.port = int(_port)
 		# set to boolean
-		self._autocommit = not not autocommit
+		if autocommit is not None:
+			self._autocommit = not not autocommit
 		try:
 			if not self.__type or self.__type not in ('MySQL', 'MSSQL'):
 				_type = self.descendant_of(('MySQL', 'MSSQL'))
