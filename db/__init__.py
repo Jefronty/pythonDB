@@ -355,6 +355,10 @@ class DB(object):
 		else:
 			# no valid DB type set yet
 			return table
+		if '.' not in table:
+			if bookended:
+				return table
+			return '%s%s%s' % (_wrap[0], table, _wrap[1])
 		br = table.split('.')
 		prepped = []
 		try:
