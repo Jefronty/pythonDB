@@ -77,7 +77,24 @@ class DB(object):
 			return False
 		return True
 
+	def check_connection(self):
+		"""check whether a connection is established and working"""
+		if hasattr(self.connection, 'ping'):
+			try:
+				self.connection.ping()
+			except:
+				return self.connect()
+			return True
+		elif 'Connection' in str(type(self.connection)):
+			try:
+				self.cursor.execute("SELECT 1")
+			except:
+				return self.connect()
+			return True
+		return False
+
 	def columns(self, table):
+		"""return column names of a table in a tuple"""
 		if self.result("SELECT * FROM %s WHERE 0=1" % self.prep_table_name(table)) is False:
 			self._error = 'failed to query `%s`' % table
 			return False
@@ -176,11 +193,13 @@ class DB(object):
 	def error(self):
 		return self._error
 
-	def execute(self, qry, commit=False):
+	def execute(self, qry, commit=False, reconnect=False):
 		"""execute given query, return can vary based on query type"""
 		self._qry = qry
 		if self.__class__.__name__ in ('MySQL', 'MSSQL') and self.__type != self.__class__.__name__:
 			self.__type = self.__class__.__name__
+		if reconnect and not self.check_connection():
+			return False
 		clue = qry.lower()[:6]
 		if clue == 'insert':
 			return self.insert(qry, commit)
