@@ -1,5 +1,19 @@
-import sys, MySQLdb, pymssql
-import json, re, string
+import sys
+try:
+	import MySQLdb
+	has_mysql = True
+except:
+	# MySQLdb not found, allow use of other types
+	has_mysql = False
+try:
+	import pymssql
+	has_mssql = True
+except:
+	# pymssql not found, allow use of other types
+	has_mssql = False
+import json
+import re
+import string
 try:
 	# only required for save_result method when saving output as XLSX file
 	import xlsxwriter
@@ -142,11 +156,15 @@ class DB(object):
 			try:
 				self.connection = MySQLdb.connect(host=self.host, user=self.user, passwd=self.pword, port=self.port, db=self.dbase, charset='utf8', connect_timeout=self.conn_timeout)
 			except:
+				if not has_mysql:
+					print('dependency MySQLdb not available')
 				return False
 		elif self.__type == 'MSSQL':
 			try:
 				self.connection = pymssql.connect(server=self.host, user=self.user, password=self.pword, database=self.dbase, port=self.port, login_timeout=self.conn_timeout, timeout=self.qry_timeout)
 			except:
+				if not has_mssql:
+					print('dependency pymssql not available')
 				return False
 		if self._autocommit:
 			self.connection.autocommit(True)
