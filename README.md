@@ -1,7 +1,7 @@
 # pythonDB
 package to connect and interact with MS SQL Server and MySQL/MariaDB databases
 
-prerequisites:
+prerequisites*:
 - MySQL: MySQLdb module for MySQL or MariaDB database
 - MSSQL: pymssql module for MS SQL Server database
 
@@ -10,3 +10,5 @@ optional:
 
 DB class contains multiple methods that can be used by either type of database.
 MySQL and MSSQL subclasses set type and utilize the methods of the parent class
+
+\* now can be used if only a single database package is available for import
