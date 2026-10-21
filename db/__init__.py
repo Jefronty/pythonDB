@@ -11,6 +11,12 @@ try:
 except:
 	# pymssql not found, allow use of other types
 	has_mssql = False
+try:
+	import psycopg2
+	has_psql = True
+except:
+	# psycopg2 not found, allow use of other types
+	has_psql = False
 import json
 import re
 import string
@@ -20,6 +26,10 @@ try:
 except:
 	pass
 from collections import namedtuple
+
+
+#known subclasses
+db_types = ('MySQL', 'MSSQL', 'PSQL')
 
 class DB(object):
 	"""Class for connecting and interacting with databases (MySQL, MariaDB, MSSQL)"""
@@ -80,11 +90,14 @@ class DB(object):
 
 	def autocommit(self, val=True):
 		"""set autocommit for an existing database connection"""
-		self._autocommit = val
+		self._autocommit = not not val
 		try:
 			if self.cursor:
 				self.cursor.close()
-				self.connection.autocommit(self._autocommit)
+				if self.__type != 'PSQL':
+					self.connection.autocommit(self._autocommit)
+				else:
+					self.connection.autocommit = self._autocommit
 				self.cursor = self.connection.cursor()
 		except:
 			self._error = 'failed to set cursor to autocommit'
@@ -120,7 +133,7 @@ class DB(object):
 
 	def connect(self, host=None, username=None, password=None, database=None, port=None, autocommit=None, conn_timeout=None, qry_timeout=None):
 		"""establish connection and cursor, return boolean of success"""
-		if self.__class__.__name__ in ('MySQL', 'MSSQL') and self.__type != self.__class__.__name__:
+		if self.__class__.__name__ in db_types and self.__type != self.__class__.__name__:
 			self.__type = self.__class__.__name__
 		if host != None:
 			self.host = host
@@ -142,15 +155,15 @@ class DB(object):
 		if autocommit is not None:
 			self._autocommit = not not autocommit
 		try:
-			if not self.__type or self.__type not in ('MySQL', 'MSSQL'):
-				_type = self.descendant_of(('MySQL', 'MSSQL'))
+			if not self.__type or self.__type not in db_types:
+				_type = self.descendant_of(db_types)
 				if not _type:
 					self._error = 'invalid type, must be MySQL or MSSQL'
 					return False
 				self.set_type(_type)
 		except:
-			self.__type = self.descendant_of(('MySQL', 'MSSQL'))
-		if not self.__type or self.__type not in ('MySQL', 'MSSQL'):
+			self.__type = self.descendant_of(db_types)
+		if not self.__type or self.__type not in db_types:
 			return False
 		if self.__type == 'MySQL':
 			try:
@@ -166,12 +179,25 @@ class DB(object):
 				if not has_mssql:
 					print('dependency pymssql not available')
 				return False
+		elif self.__type == 'PSQL':
+			try:
+				self.connection = psycopg2.connect(host=self.host, user=self.user, password=self.pword, dbname=self.dbase, port=self.port, connect_timeout=self.conn_timeout)
+			except:
+				if not has_psql:
+					print('dependency psycopg2 not available')
+				return False
 		if self._autocommit:
-			self.connection.autocommit(True)
+			if self.__type != 'PSQL':
+				self.connection.autocommit(True)
+			else:
+				self.connection.autocommit = True
 		self.cursor = self.connection.cursor()
-		if self.qry_timeout and self.__type == 'MySQL':
-			self.execute("SET SESSION interactive_timeout=%d" % self.qry_timeout)
-			self.execute("SET SESSION wait_timeout=%d" % self.qry_timeout)
+		if self.qry_timeout:
+			if self.__type == 'MySQL':
+				self.execute("SET SESSION interactive_timeout=%d" % self.qry_timeout)
+				self.execute("SET SESSION wait_timeout=%d" % self.qry_timeout)
+			elif self.__type == 'PSQL':
+				self.execute("SET statement_timeout = '%ds'" % self.qry_timeout)
 		return True
 
 	def descendant_of(self, _type):
@@ -214,7 +240,7 @@ class DB(object):
 	def execute(self, qry, commit=False, reconnect=False):
 		"""execute given query, return can vary based on query type"""
 		self._qry = qry
-		if self.__class__.__name__ in ('MySQL', 'MSSQL') and self.__type != self.__class__.__name__:
+		if self.__class__.__name__ in db_types and self.__type != self.__class__.__name__:
 			self.__type = self.__class__.__name__
 		if reconnect and not self.check_connection():
 			return False
@@ -311,8 +337,12 @@ class DB(object):
 		"""wrap column name(s) in type dependent characters for building queries"""
 		if self.__type == 'MySQL':
 			_wrap = ('`','`')
-		else:
+		elif self.__type == 'MSSQL':
 			_wrap = ('[',']')
+		elif self.__type == 'PSQL':
+			_wrap = ('"','"')
+		else:
+			return columns
 		glue = '%s, %s' % (_wrap[1], _wrap[0])
 		cols = []
 		if isinstance(columns, (list, tuple, dict)):
@@ -389,6 +419,8 @@ class DB(object):
 			_wrap = ('`','`')
 		elif self.__type == 'MSSQL':
 			_wrap = ('[',']')
+		elif self.__type == 'PSQL':
+			_wrap = ('"','"')
 		else:
 			# no valid DB type set yet
 			return table
@@ -594,7 +626,7 @@ class DB(object):
 		return self.set_type(dbtype)
 
 class MySQL(DB):
-	"""subclass of DB to interact with MySQL"""
+	"""subclass of DB to interact with MySQL or MariaDB"""
 	def __init__(self, host=None, username=None, password=None, database=None, port=3306, autocommit=False, autoconnect=True, conn_timeout=0, qry_timeout=0):
 		if sys.version_info[0] > 2:
 			super().__init__(host, username, password, database, 'MySQL', port, autocommit)
@@ -627,5 +659,23 @@ class MSSQL(DB):
 			else:
 				# set to default if invalid input provided
 				self.port = 1433
+		if autoconnect and host != None and username != None and password != None and database != None:
+			self.connect()
+
+class PSQL(DB):
+	"""subclass of DB to interact with PostgreSQL"""
+	def __init__(self, host=None, username=None, password=None, database=None, port=5432, autocommit=False, autoconnect=True, conn_timeout=0, qry_timeout=0):
+		if sys.version_info[0] > 2:
+			super().__init__(host, username, password, database, 'PSQL', port, autocommit)
+		else:
+			# legacy code for Python2 usage
+			super(PSQL, self).__init__(host=host, username=username, password=password, database=database, port=port, type='PSQL', autocommit=autocommit)
+		if port != 5432:
+			_port = str(port).strip()
+			if _port.isdigit():
+				self.port = int(_port)
+			else:
+				# set to default if invalid input provided
+				self.port = 5432
 		if autoconnect and host != None and username != None and password != None and database != None:
 			self.connect()
