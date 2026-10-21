@@ -27,7 +27,6 @@ except:
 	pass
 from collections import namedtuple
 
-
 #known subclasses
 db_types = ('MySQL', 'MSSQL', 'PSQL')
 
@@ -449,8 +448,10 @@ class DB(object):
 			return self.qry_prep(self.prep_str(val))
 		try:
 			if self.__type == 'MySQL':
+				# add a slash to escape slashes and apostrophes
 				return str(val).replace('\\', '\\\\').replace("'", "\\'")
-			elif self.__type == 'MSSQL':
+			elif self.__type in ('MSSQL', 'PSQL'):
+				# double apostrophe to escape
 				return str(val).replace("'", "''")
 			else:
 				# unknown condition
@@ -587,7 +588,7 @@ class DB(object):
 		if prepped in ('mysql', 'mariadb'):
 			if self.__class__.__name__ == 'MySQL':
 				return True
-			elif self.__class__.__name__ == 'MSSQL' or self.descendant_of('MSSQL'):
+			elif self.__class__.__name__ == ('MSSQL', 'PSQL') or self.descendant_of(('MSSQL', 'PSQL')):
 				return False
 			self.__type = 'MySQL'
 			if not hasattr(self, 'port') or type(self.port) is not int:
@@ -595,11 +596,19 @@ class DB(object):
 		elif prepped in ('ms', 'mssql', 'sql', 'sql server'):
 			if self.__class__.__name__ == 'MSSQL':
 				return True
-			elif self.__class__.__name__ == 'MySQL' or self.descendant_of('MySQL'):
+			elif self.__class__.__name__ == ('MySQL', 'PSQL') or self.descendant_of(('MySQL', 'PSQL')):
 				return False
 			self.__type = 'MSSQL'
 			if not hasattr(self, 'port') or type(self.port) is not int:
 				self.port = 1433
+		elif dbtype[0].lower() == 'p':
+			if self.__class__.__name__ == 'PSQL':
+				return True
+			elif self.__class__.__name__ == ('MySQL', 'MSSQL') or self.descendant_of(('MySQL', 'MSSQL')):
+				return False
+			self.__type = 'PSQL'
+			if not hasattr(self, 'port') or type(self.port) is not int:
+				self.port = 5432
 		else:
 			return False
 		return True
