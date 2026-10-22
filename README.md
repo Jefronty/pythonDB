@@ -9,7 +9,7 @@ prerequisites*:
 optional:
 - xlsxwriter: used in save_result method if you choose to output to XLSX file
 
-DB class contains multiple methods that can be used by either type of database.
-MySQL and MSSQL subclasses set type and utilize the methods of the parent class
+DB class contains multiple methods that can be used by each type of database.
+MySQL, MSSQL, PSQL subclasses set type and utilize the methods of the parent class
 
 \* now can be used if only a single database package is available for import
